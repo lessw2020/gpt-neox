@@ -125,7 +125,7 @@ class NeoXArgs(*BASE_CLASSES):
             try:
                 from torch.utils.tensorboard import SummaryWriter
 
-                print("> setting tensorboard ...")
+                print("\n> ****  --->  Setting Tensorboard ...\n")
                 self.tensorboard_writer = SummaryWriter(log_dir=self.tensorboard_dir)
             except (ModuleNotFoundError, ImportError):
                 print(
