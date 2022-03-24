@@ -478,73 +478,47 @@ def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
     return model, optimizer, lr_scheduler
 
 
-def backward_step(neox_args, timers, optimizer, model, loss):
+def backward_step(loss):
     """Backward step."""
 
     # Backward pass.
     timers("backward-backward").start()
-    if neox_args.deepspeed:
-        model.backward(loss)
-    else:
-        raise ValueError("Must be using deepspeed to run neox")
-    timers("backward-backward").stop()
-
-    if neox_args.deepspeed:
-        # DeepSpeed backward propagation already addressed all reduce communication.
-        # Reset the timer to avoid breaking timer logs below.
-        timers("backward-allreduce").reset()
-    else:
-        raise ValueError("Must be using deepspeed to run neox")
+    loss.backward()
+    timers("backward-allreduce").reset()
+    
 
 
 def train_step(neox_args, timers, data_iterator, model, optimizer, lr_scheduler):
     """Single training step."""
 
     # Pipeline parallelism schedules forward/backward/step
-    if neox_args.is_pipe_parallel:
-        reduced_loss = train_step_pipe(
-            neox_args=neox_args, timers=timers, model=model, data_iterator=data_iterator
+
+    losses = []
+    for _ in range(neox_args.gradient_accumulation_steps):
+        # Forward model for one step.
+        timers("forward").start()
+        loss = forward_step(
+            neox_args=neox_args,
+            timers=timers,
+            data_iterator=data_iterator,
+            model=model,
         )
-    else:
-        losses = []
-        for _ in range(neox_args.gradient_accumulation_steps):
-            # Forward model for one step.
-            timers("forward").start()
-            loss = forward_step(
-                neox_args=neox_args,
-                timers=timers,
-                data_iterator=data_iterator,
-                model=model,
-            )
-            timers("forward").stop()
-            losses.append(loss)
-            # Calculate gradients, reduce across processes, and clip.
-            timers("backward").start()
-            backward_step(
-                neox_args=neox_args,
-                timers=timers,
-                optimizer=optimizer,
-                model=model,
-                loss=loss,
-            )
-            timers("backward").stop()
-            # Update parameters.
-            timers("optimizer").start()
-            if neox_args.deepspeed:
-                model.step()
-            else:
-                raise ValueError("Must be using deepspeed to run neox")
-            timers("optimizer").stop()
-        reduced_loss = {
-            "lm_loss": reduce_losses(losses).mean()
-        }  # reduces losses across machines for logging
+        timers("forward").stop()
+        losses.append(loss)
+        # Calculate gradients, reduce across processes, and clip.
+        timers("backward").start()
+        backward_step(loss)
+        timers("backward").stop()
+        # Update parameters.
+        timers("optimizer").start()
+        optimizer.step()
+        timers("optimizer").stop()
+    reduced_loss = {
+        "lm_loss": reduce_losses(losses).mean()
+    }  # reduces losses across machines for logging
 
-    if neox_args.precision == "fp16" and model.optimizer.overflow:
-        skipped_iter = 1
-    else:
-        skipped_iter = 0
 
-    return reduced_loss, skipped_iter
+    return reduced_loss
 
 
 def train_step_pipe(neox_args, timers, model, data_iterator):
@@ -595,7 +569,7 @@ def train(
     # to monitor if we've skipped many iterations in a row and trigger an early exit
     overflow_monitor = OverflowMonitor(optimizer)
     while iteration < neox_args.train_iters:
-        loss_dict, skipped_iter = train_step(
+        loss_dict = train_step(
             neox_args=neox_args,
             timers=timers,
             data_iterator=train_data_iterator,
