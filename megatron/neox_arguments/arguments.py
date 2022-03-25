@@ -332,7 +332,127 @@ class NeoXArgs(*BASE_CLASSES):
         return neox_args
 
     @classmethod
-    def consume_neox_args(cls, overwrite_values=None):
+    def consume_fsdp_args(cls):
+        """
+        entry point for deepy.py configuring and consuming command line arguments.
+
+        We can use `--wandb_group` / `--wandb_team` to overwrite those args from the command line, otherwise the value from the config is taken.
+        """
+
+        parser = argparse.ArgumentParser(
+            description="GPT-NeoX Configuration", allow_abbrev=False
+        )
+
+        group = parser.add_argument_group(title="Training Configuration")
+
+        # group.add_argument(
+        #     "user_script",
+        #     type=str,
+        #     help="User script to launch, followed by any required " "arguments.",
+        # )
+
+        group.add_argument(
+            "--conf_dir",
+            "-d",
+            type=str,
+            default=None,
+            help="Directory to prefix to all configuration file paths",
+        )
+
+        group.add_argument(
+            "conf_file",
+            type=str,
+            nargs="+",
+            help="Configuration file path. Multiple files can be provided and will be merged.",
+        )
+
+        group = parser.add_argument_group(title="Weights and Biases monitoring args")
+
+        group.add_argument(
+            "--wandb_group",
+            type=str,
+            default=None,
+            help='Weights and Biases group name - used to group together "runs".',
+        )
+        group.add_argument(
+            "--wandb_team",
+            type=str,
+            default=None,
+            help="Team name for Weights and Biases.",
+        )
+
+        group = parser.add_argument_group(title="Eval args")
+
+        group.add_argument(
+            "--eval_tasks",
+            type=str,
+            nargs="+",
+            default=None,
+            help="Optionally overwrite eval tasks to run for evaluate.py",
+        )
+        group.add_argument(
+            "--iteration",
+            type=int,
+            default=None,
+            help="Iteration to load checkpoint from in evaluate.py / generate.py. If None is provided, uses the latest iteration.",
+        )
+        group.add_argument(
+            "--eval_results_prefix",
+            type=str,
+            default=None,
+            help="prefix to append to eval results file",
+        )
+        group = parser.add_argument_group(title="Generation args")
+        group.add_argument(
+            "-i",
+            "--sample_input_file",
+            type=str,
+            default=None,
+            help="Optionally overwrite `sample_input_file` for generate.py",
+        )
+        group.add_argument(
+            "-o",
+            "--sample_output_file",
+            type=str,
+            default=None,
+            help="Optionally overwrite `sample_output_file` for generate.py",
+        )
+        args_parsed = parser.parse_args()
+
+        # Validate user_script exists
+        # assert os.path.exists(
+        #     args_parsed.user_script
+        # ), f"User script could not be found: {args_parsed.user_script}"
+
+        # load config files
+        conf_files = args_parsed.conf_file
+        if args_parsed.conf_dir:
+            conf_files = [os.path.join(args_parsed.conf_dir, f) for f in conf_files]
+
+        # enables us to pass in `small` instead of `small.yml`
+        conf_files = [(cf if cf.endswith(".yml") else cf + ".yml") for cf in conf_files]
+
+        # determine overwrite values
+        overwrite_values = dict()
+        for k, v in vars(args_parsed).items():
+            if k not in ["conf_dir", "conf_file"] and v is not None:
+                overwrite_values[k] = v
+        # load args
+        neox_args = cls.from_ymls(
+            paths_to_yml_files=conf_files, overwrite_values=overwrite_values
+        )
+
+        if neox_args.wandb_group is not None:
+            # concat the wandb group name with a uid to make sure it's unique
+            import wandb
+
+            neox_args.wandb_group += "_" + wandb.util.generate_id()
+        neox_args.print()
+
+        return neox_args
+
+    @classmethod
+    def consume_neox_args(cls, megatronconfig=None, overwrite_values=None):
         """
         Deepspeed launcher needs to pass the arguments for `pretrain_gpt2.py` across to all machines.
 
@@ -353,7 +473,7 @@ class NeoXArgs(*BASE_CLASSES):
         )
 
         args_parsed, _ = parser.parse_known_args()
-        megatron_config = json.loads(args_parsed.megatron_config)
+        megatron_config = json.loads(megatronconfig)
         if overwrite_values is not None:
             megatron_config.update(overwrite_values)
         return cls.from_dict(args_dict=megatron_config)
