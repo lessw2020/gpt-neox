@@ -144,41 +144,41 @@ def pretrain(rank, world_size, neox_args):
             valid_data_iterator=valid_data_iterator,
         )
 
-    if neox_args.do_valid:
-        prefix = "the end of training for val data"
-        evaluate_and_print_results(
-            neox_args=neox_args,
-            prefix=prefix,
-            forward_step_func=forward_step,
-            data_iterator=valid_data_iterator,
-            model=model,
-            iteration=iteration,
-            verbose=False,
-            timers=timers,
-        )
+    # if neox_args.do_valid:
+    #     prefix = "the end of training for val data"
+    #     evaluate_and_print_results(
+    #         neox_args=neox_args,
+    #         prefix=prefix,
+    #         forward_step_func=forward_step,
+    #         data_iterator=valid_data_iterator,
+    #         model=model,
+    #         iteration=iteration,
+    #         verbose=False,
+    #         timers=timers,
+    #     )
 
-    if neox_args.save and iteration != 0:
-        save_checkpoint(
-            neox_args=neox_args,
-            iteration=iteration,
-            model=model,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-        )
+    # if neox_args.save and iteration != 0:
+    #     save_checkpoint(
+    #         neox_args=neox_args,
+    #         iteration=iteration,
+    #         model=model,
+    #         optimizer=optimizer,
+    #         lr_scheduler=lr_scheduler,
+    #     )
 
-    if neox_args.do_test:
-        # Run on test data.
-        prefix = "the end of training for test data"
-        evaluate_and_print_results(
-            neox_args=neox_args,
-            prefix=prefix,
-            forward_step_func=forward_step,
-            data_iterator=test_data_iterator,
-            model=model,
-            iteration=0,  # iteration 0 in order to always use full test data
-            verbose=True,
-            timers=timers,
-        )
+    # if neox_args.do_test:
+    #     # Run on test data.
+    #     prefix = "the end of training for test data"
+    #     evaluate_and_print_results(
+    #         neox_args=neox_args,
+    #         prefix=prefix,
+    #         forward_step_func=forward_step,
+    #         data_iterator=test_data_iterator,
+    #         model=model,
+    #         iteration=0,  # iteration 0 in order to always use full test data
+    #         verbose=True,
+    #         timers=timers,
+    #     )
 
 
 def _get_batch(neox_args, tokenizer, keys, data, datatype):
@@ -237,8 +237,8 @@ def get_batch_pipe(data, neox_args):
 
 def forward_step(data_iterator, model, neox_args, timers, return_logits=False):
     """Forward step."""
-    if neox_args.is_pipe_parallel:
-        return model.eval_batch(data_iterator, return_logits=return_logits)
+    # if neox_args.is_pipe_parallel:
+    #     return model.eval_batch(data_iterator, return_logits=return_logits)
 
     # Get the batch.
     if timers is not None:
@@ -291,7 +291,7 @@ def get_model(neox_args, use_cache=False):
         for name, param in model.named_parameters():
             if not "soft_embedding" in name:
                 param.requires_grad = False
-
+    return model
     # if not neox_args.is_pipe_parallel:
     #     # Export PipeParallel model to nn.Sequential model to avoid the overhead of deepspeed's pipe parallel training
     #     model = model.to_sequential()
